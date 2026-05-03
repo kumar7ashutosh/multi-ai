@@ -9,6 +9,8 @@ if ROOT not in sys.path:
 import streamlit as st
 import requests
 import uuid
+from dotenv import load_dotenv
+load_dotenv()
 
 from app.config.settings import settings
 
