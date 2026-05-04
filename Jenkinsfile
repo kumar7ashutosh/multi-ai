@@ -2,11 +2,11 @@ pipeline{
     agent any
 
     environment {
-        SONAR_PROJECT_KEY = 'llomps'
-		SONAR_SCANNER_HOME = tool 'sonarkube'
-        AWS_REGION = 'us-east-1'
-        ECR_REPO = 'my-repo'
-        IMAGE_TAG = 'latest'
+        SONAR_PROJECT_KEY = 'sonarqube'
+		SONAR_SCANNER_HOME = tool 'sonarqube'
+        // AWS_REGION = 'us-east-1'
+        // ECR_REPO = 'my-repo'
+        // IMAGE_TAG = 'latest'
 	}
 
     stages{
@@ -21,9 +21,9 @@ pipeline{
 
     stage('SonarQube Analysis'){
 			steps {
-				withCredentials([string(credentialsId: 'sonarkubetoken', variable: 'SONAR_TOKEN')]) {
+				withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_TOKEN')]) {
     					
-					withSonarQubeEnv('sonarkube') {
+					withSonarQubeEnv('sonarqube') {
     						sh """
 						${SONAR_SCANNER_HOME}/bin/sonar-scanner \
 						-Dsonar.projectKey=${SONAR_PROJECT_KEY} \
