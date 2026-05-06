@@ -2,12 +2,16 @@ pipeline {
     agent any
 
     environment {
+
         SONAR_PROJECT_KEY  = 'sonarqube'
         SONAR_SCANNER_HOME = tool 'sonarqube'
 
         AWS_REGION = 'us-east-1'
         ECR_REPO   = 'my-repo'
         IMAGE_TAG  = 'latest'
+
+        ECS_CLUSTER = 'sonarqube'
+        ECS_SERVICE = 'sonarqube-service-n8cv0yog'
 
         DOCKER_CLIENT_TIMEOUT = '300'
         COMPOSE_HTTP_TIMEOUT  = '300'
@@ -16,8 +20,11 @@ pipeline {
     stages {
 
         stage('Cloning Github repo to Jenkins') {
+
             steps {
+
                 script {
+
                     echo 'Cloning Github repo to Jenkins............'
 
                     checkout scmGit(
@@ -33,7 +40,9 @@ pipeline {
         }
 
         stage('Verify Docker Environment') {
+
             steps {
+
                 sh '''
                 docker version
                 docker info
@@ -42,6 +51,7 @@ pipeline {
         }
 
         stage('SonarQube Analysis') {
+
             steps {
 
                 withCredentials([
@@ -66,6 +76,7 @@ pipeline {
         }
 
         stage('Build and Push Docker Image to ECR') {
+
             steps {
 
                 withCredentials([[
@@ -80,25 +91,58 @@ pipeline {
                             returnStdout: true
                         ).trim()
 
-                        def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
+                        def ecrUrl = "${accountId}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
 
                         sh """
                         export DOCKER_CLIENT_TIMEOUT=300
                         export COMPOSE_HTTP_TIMEOUT=300
 
                         echo "Logging into AWS ECR..."
-                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${accountId}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+                        aws ecr get-login-password --region ${AWS_REGION} | \
+                        docker login --username AWS --password-stdin \
+                        ${accountId}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
                         echo "Building Docker image..."
+
                         docker build -t ${ECR_REPO}:${IMAGE_TAG} .
 
                         echo "Tagging Docker image..."
-                        docker tag ${ECR_REPO}:${IMAGE_TAG} ${ecrUrl}:${IMAGE_TAG}
 
-                        echo "Pushing Docker image to ECR..."
-                        docker push ${ecrUrl}:${IMAGE_TAG}
+                        docker tag ${ECR_REPO}:${IMAGE_TAG} ${ecrUrl}:${IMAGE_TAG}
                         """
+                        
+                        retry(3) {
+
+                            sh """
+                            echo "Pushing Docker image to ECR..."
+
+                            docker push ${ecrUrl}:${IMAGE_TAG}
+                            """
+                        }
                     }
+                }
+            }
+        }
+
+        stage('Deploy to ECS Fargate') {
+
+            steps {
+
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-token'
+                ]]) {
+
+                    sh """
+                    echo "Deploying application to ECS Fargate..."
+
+                    aws ecs update-service \
+                      --cluster ${ECS_CLUSTER} \
+                      --service ${ECS_SERVICE} \
+                      --force-new-deployment \
+                      --region ${AWS_REGION}
+                    """
                 }
             }
         }
@@ -107,14 +151,17 @@ pipeline {
     post {
 
         success {
+
             echo 'Pipeline executed successfully!'
         }
 
         failure {
+
             echo 'Pipeline failed!'
         }
 
         always {
+
             sh '''
             docker system prune -f || true
             '''
